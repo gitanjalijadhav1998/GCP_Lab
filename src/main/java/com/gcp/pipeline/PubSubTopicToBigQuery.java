@@ -35,7 +35,7 @@ public class PubSubTopicToBigQuery {
 
         @Description("BigQuery raw table name")
         String getTableName();
-        void setRawTableName(String rawTableName);
+        void setTableName(String tableName);
     }
 
     public static void main(String[] args) {
