@@ -34,8 +34,8 @@ public class PubSubTopicToBigQuery {
         void setInputTopic(String inputTopic);
 
         @Description("BigQuery raw table name")
-        String getTableName();
-        void setTableName(String tableName);
+        String getRawTableName();
+        void setRawTableName(String rawtableName);
     }
 
     public static void main(String[] args) {
@@ -99,7 +99,7 @@ public class PubSubTopicToBigQuery {
                                                             }
                 )).setRowSchema(rawSchema)
                 .apply("WriteRawToBQ",
-                        BigQueryIO.<Row>write().to(options.getTableName()).useBeamSchema()
+                        BigQueryIO.<Row>write().to(options.getRawTableName()).useBeamSchema()
                                 .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
                                 .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
 
