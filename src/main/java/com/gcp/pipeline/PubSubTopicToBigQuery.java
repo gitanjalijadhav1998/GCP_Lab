@@ -38,8 +38,8 @@ public class PubSubTopicToBigQuery {
     }
 
     public static void main(String[] args) {
+        PipelineOptionsFactory.register(Options.class);
         Options options = PipelineOptionsFactory.fromArgs(args).withValidation().as(Options.class);
-
         run(options);
     }
 
