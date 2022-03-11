@@ -51,7 +51,7 @@ public class PubSubTopicToBigQuery {
    static class JsonToTableData extends DoFn<String, TableDetails> {
 
         @ProcessElement
-        public void processElement(@Element String json, OutputReceiver r) throws Exception {
+        public void processElement(@Element String json, OutputReceiver<TableDetails> r) throws Exception {
             Gson gson = new Gson();
             TableDetails details = gson.fromJson(json, TableDetails.class);
             r.output(details);
