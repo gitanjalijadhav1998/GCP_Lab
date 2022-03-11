@@ -12,14 +12,15 @@ import org.apache.beam.sdk.schemas.Schema;
 import org.apache.beam.sdk.schemas.transforms.Select;
 import org.apache.beam.sdk.transforms.*;
 import org.apache.beam.sdk.transforms.windowing.IntervalWindow;
-import org.apache.beam.sdk.values.PCollection;
-import org.apache.beam.sdk.values.Row;
+import org.apache.beam.sdk.values.*;
 import org.joda.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class PubSubTopicToBigQuery {
     private static final Logger LOG = LoggerFactory.getLogger(PubSubTopicToBigQuery.class);
+    private static TupleTag<TableDetails> ValidMessage = new TupleTag<TableDetails>(){};
+    private static TupleTag<String> DlqMessage = new TupleTag<String>(){};
 
     /**
      * The {@link Options} class provides the custom execution options passed by the
@@ -35,6 +36,10 @@ public class PubSubTopicToBigQuery {
         @Description("Pubsub Subscription")
         String getpubsubTopic();
         void setpubsubTopic(String pubsubTopic);
+
+        @Description("DLQ Topic")
+        String getdlqTopic();
+        void setdlqTopic(String dlqTopic);
     }
 
     public static void main(String[] args) {
@@ -51,10 +56,14 @@ public class PubSubTopicToBigQuery {
    static class JsonToTableData extends DoFn<String, TableDetails> {
 
         @ProcessElement
-        public void processElement(@Element String json, OutputReceiver<TableDetails> r) throws Exception {
+        public void processElement(@Element String json, ProcessContext processContext) throws Exception {
             Gson gson = new Gson();
-            TableDetails details = gson.fromJson(json, TableDetails.class);
-            r.output(details);
+            try {
+                TableDetails details = gson.fromJson(json,TableDetails.class);
+                processContext.output(ValidMessage,details);
+            } catch (Exception exception){
+                processContext.output(DlqMessage,json);
+            }
         }
     }
 
@@ -72,20 +81,21 @@ public class PubSubTopicToBigQuery {
         Pipeline pipeline = Pipeline.create(options);
         //options.setJobName("usecase1-labid-5");
 
-        PCollection<TableDetails> tableDetails = pipeline
+        PCollectionTuple tableDetails = pipeline
                 .apply("ReadMessage", PubsubIO.readStrings()
                         .fromTopic(options.getpubsubTopic()))
+                .apply("ParseJson", ParDo.of(new JsonToTableData()).withOutputTags(ValidMessage, TupleTagList.of(DlqMessage)));
 
-                .apply("ParseJson", ParDo.of(new JsonToTableData()));
 
-
-        tableDetails
+        PCollection<TableDetails> ValidData = tableDetails.get(ValidMessage);
+        PCollection<String> InvalidMessage = tableDetails.get(DlqMessage);
+        ValidData
                 .apply("Convert ToR ow", ParDo.of(new DoFn<TableDetails, String>() {
                     @ProcessElement
-                    public void processElement(OutputReceiver outputReceiver) {
+                    public void processElement(ProcessContext context) {
                         Gson g = new Gson();
-                        String gsonString = g.toJson(outputReceiver.toString());
-                        outputReceiver.output(gsonString);
+                        String gsonString = g.toJson(context.element());
+                        context.output(gsonString);
                         
                     }
                 })).apply("Convert Json To row", JsonToRow.withSchema(rawSchema))
