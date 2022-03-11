@@ -10,12 +10,11 @@ import org.apache.beam.sdk.options.Description;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.schemas.Schema;
 import org.apache.beam.sdk.schemas.transforms.Select;
-import org.apache.beam.sdk.transforms.DoFn;
-import org.apache.beam.sdk.transforms.MapElements;
-import org.apache.beam.sdk.transforms.ParDo;
-import org.apache.beam.sdk.transforms.SimpleFunction;
+import org.apache.beam.sdk.transforms.*;
+import org.apache.beam.sdk.transforms.windowing.IntervalWindow;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.Row;
+import org.joda.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,13 +28,13 @@ public class PubSubTopicToBigQuery {
 
     public interface Options extends DataflowPipelineOptions {
 
-        @Description("Input topic name")
-        String getInputTopic();
-        void setInputTopic(String inputTopic);
+        @Description("Bigquery Table Name")
+        String getTableName();
+        void setTableName(String tableName);
 
-        @Description("BigQuery raw table name")
-        String getRawTableName();
-        void setRawTableName(String rawtableName);
+        @Description("Pubsub Subscription")
+        String getpubsubTopic();
+        void setpubsubTopic(String pubsubTopic);
     }
 
     public static void main(String[] args) {
@@ -49,13 +48,13 @@ public class PubSubTopicToBigQuery {
      * A DoFn acccepting Json and outputing CommonLog with Beam Schema
      */
     
-   static class JsonToCommonLog extends DoFn<String, CommonLog> {
+   static class JsonToTableData extends DoFn<String, TableDetails> {
 
         @ProcessElement
-        public void processElement(@Element String json, OutputReceiver<CommonLog> r) throws Exception {
+        public void processElement(@Element String json, OutputReceiver r) throws Exception {
             Gson gson = new Gson();
-            CommonLog commonLog = gson.fromJson(json, CommonLog.class);
-            r.output(commonLog);
+            TableDetails details = gson.fromJson(json, TableDetails.class);
+            r.output(details);
         }
     }
 
@@ -67,42 +66,34 @@ public class PubSubTopicToBigQuery {
             .build();
 
 
-    public static PipelineResult run(Options options) {
 
+    public static PipelineResult run(Options options) {
         // Create the pipeline
         Pipeline pipeline = Pipeline.create(options);
-        options.setJobName("PubSubTopicToBigQuery - " + System.currentTimeMillis());
+        //options.setJobName("usecase1-labid-5" + System.currentTimeMillis());
 
-
-
-        PCollection<CommonLog> commonLogs = pipeline
+        PCollection<TableDetails> tableDetails = pipeline
                 .apply("ReadMessage", PubsubIO.readStrings()
-                        .fromTopic(options.getInputTopic()))
+                        .fromTopic(options.getpubsubTopic()))
 
-                .apply("ParseJson", ParDo.of(new JsonToCommonLog()));
+                .apply("ParseJson", ParDo.of(new JsonToTableData()));
 
 
-        commonLogs
-                .apply("SelectFields", Select.fieldNames("id", "name", "surname"))
-
-                .apply("AddProcessingTime", MapElements.via(new SimpleFunction<Row, Row>() {
-                                                                @Override
-                                                                public Row apply(Row row) {
-                                                                    return Row.withSchema(rawSchema)
-                                                                            .addValues(
-                                                                                    row.getInt64("id"),
-                                                                                    row.getString("name"),
-                                                                                    row.getString("surname"))
-                                                                                    //DateTime.now())
-                                                                            .build();
-                                                                }
-                                                            }
-                )).setRowSchema(rawSchema)
-                .apply("WriteRawToBQ",
-                        BigQueryIO.<Row>write().to(options.getRawTableName()).useBeamSchema()
+        tableDetails
+                .apply("Convert ToR ow", ParDo.of(new DoFn<TableDetails, String>() {
+                    @ProcessElement
+                    public void processElement(OutputReceiver outputReceiver) {
+                        Gson g = new Gson();
+                        String gsonString = g.toJson(outputReceiver.toString());
+                        outputReceiver.output(gsonString);
+                        
+                    }
+                })).apply("Convert Json To row", JsonToRow.withSchema(rawSchema))
+                // Streaming insert of aggregate data
+                .apply("Write PubSub Topic to BigQuery",
+                        BigQueryIO.<Row>write().to(options.getTableName()).useBeamSchema()
                                 .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND)
                                 .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED));
-
 
         LOG.info("Building pipeline...");
 

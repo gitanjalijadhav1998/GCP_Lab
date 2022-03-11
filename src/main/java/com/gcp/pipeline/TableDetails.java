@@ -8,7 +8,7 @@ import org.apache.beam.sdk.schemas.annotations.DefaultSchema;
  * Annotated with @DefaultSchema to the allow the use of Beam Schema and <Row> object
  */
 @DefaultSchema(JavaFieldSchema.class)
-public class CommonLog {
+public class TableDetails {
     @javax.annotation.Nullable int id;
     @javax.annotation.Nullable String name;
     @javax.annotation.Nullable String surname;
