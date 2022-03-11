@@ -70,7 +70,7 @@ public class PubSubTopicToBigQuery {
     public static PipelineResult run(Options options) {
         // Create the pipeline
         Pipeline pipeline = Pipeline.create(options);
-        //options.setJobName("usecase1-labid-5" + System.currentTimeMillis());
+        options.setJobName("usecase1-labid-5");
 
         PCollection<TableDetails> tableDetails = pipeline
                 .apply("ReadMessage", PubsubIO.readStrings()
